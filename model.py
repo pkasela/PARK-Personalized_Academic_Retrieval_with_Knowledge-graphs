@@ -1,12 +1,12 @@
 from adapters import init
-from torch import save, load
+from torch import save, load, concat
 from torch import clamp as t_clamp
 from torch import nn, no_grad, tensor
-from torch import argmax, arange, stack, einsum, softmax
 from torch import sum as t_sum
 from torch import max as t_max
 from torch.nn import functional as F
 from transformers import AutoModel, AutoTokenizer
+import json
 
 class GraphBiEncoder(nn.Module):
     def __init__(
@@ -15,8 +15,12 @@ class GraphBiEncoder(nn.Module):
         tokenizer_name,
         author_to_index,
         venue_to_index,
+        doc_embeddings=None,
+        doc_id_to_index=None,
+        query_embeddings=None,
+        query_id_to_index=None,
         max_tokens=512,
-        normalize=False,
+        normalize=True,
         pooling_mode='mean',
         device='cpu',
     ):
@@ -25,7 +29,8 @@ class GraphBiEncoder(nn.Module):
         self.tokenizer_name = tokenizer_name
         self.max_tokens = max_tokens
         self.normalize = normalize
-
+        self.embedding_mode = 'model'
+        
         self.author_to_index = author_to_index
         self.venue_to_index = venue_to_index
         self.num_relations = len(['wrote', 'venue', 'cited'])
@@ -37,10 +42,27 @@ class GraphBiEncoder(nn.Module):
 
         self._init_model()
         self.embedding_size = self.doc_model.config.hidden_size
+        if doc_embeddings:
+            self.doc_embeddings = load(doc_embeddings)
+            self.doc_embeddings = self.doc_embeddings.to(self.device)
+            with open(doc_id_to_index, 'r') as f:
+                self.doc_id_to_index = json.load(f)
+                self.doc_id_to_index['-1'] = len(self.doc_id_to_index) # for [SEP] token
+            with no_grad():
+                padding_vector = self.doc_encoder(['[SEP]'])
+            self.embedding_mode = 'pretrained'
+            self.doc_embeddings = concat((self.doc_embeddings, padding_vector), dim=0)
+
+        if query_embeddings:
+            self.query_embeddings = load(query_embeddings)
+            with open(query_id_to_index, 'r') as f:
+                self.query_id_to_index = json.load(f)
+
 
         self.author_embedding = nn.Embedding(
-            len(self.author_to_index),
+            len(self.author_to_index) + 1,
             self.embedding_size,
+            padding_idx=len(self.author_to_index),
             device=self.device
         )
         self.venue_embedding = nn.Embedding(
@@ -51,8 +73,13 @@ class GraphBiEncoder(nn.Module):
         )
 
 
-        self.n_relations = 3
+        self.n_relations = 2
         self.relation_embedding = nn.Embedding(
+            self.n_relations,
+            self.embedding_size,
+            device=self.device
+        )
+        self.hyper_plane = nn.Embedding(
             self.n_relations,
             self.embedding_size,
             device=self.device
@@ -93,34 +120,40 @@ class GraphBiEncoder(nn.Module):
 
 
     def query_encoder(self, queries):
-        encoded_input = self.tokenizer(
-            queries, 
-            padding=True, 
-            truncation=True, 
-            max_length=self.max_tokens, 
-            return_tensors='pt'
-        ).to(self.device)
+        if self.embedding_mode == 'model':
+            encoded_input = self.tokenizer(
+                queries, 
+                padding=True, 
+                truncation=True, 
+                max_length=self.max_tokens, 
+                return_tensors='pt'
+            ).to(self.device)
 
-        embeddings = self.q_model(**encoded_input)
-        if self.normalize:
-            return F.normalize(self.pooling(embeddings, encoded_input['attention_mask']), dim=-1)
-        return self.pooling(embeddings, encoded_input['attention_mask'])
+            embeddings = self.q_model(**encoded_input)
+            if self.normalize:
+                return F.normalize(self.pooling(embeddings, encoded_input['attention_mask']), dim=-1)
+            return self.pooling(embeddings, encoded_input['attention_mask'])
+    
+        elif self.embedding_mode == 'pretrained':
+            return self.query_embeddings[tensor([int(self.query_id_to_index[id]) for id in queries])]
 
 
     def doc_encoder(self, documents):
-        encoded_input = self.tokenizer(
-            documents, 
-            padding=True, 
-            truncation=True, 
-            max_length=self.max_tokens, 
-            return_tensors='pt'
-        ).to(self.device)
-
-        embeddings = self.doc_model(**encoded_input)
-        if self.normalize:
-            return F.normalize(self.pooling(embeddings, encoded_input['attention_mask']), dim=-1)
-        return self.pooling(embeddings, encoded_input['attention_mask'])
-    
+        if self.embedding_mode == 'model':
+            encoded_input = self.tokenizer(
+                documents, 
+                padding=True, 
+                truncation=True, 
+                max_length=self.max_tokens, 
+                return_tensors='pt'
+            ).to(self.device)
+            embeddings = self.doc_model(**encoded_input)
+            if self.normalize:
+                return F.normalize(self.pooling(embeddings, encoded_input['attention_mask']), dim=-1)
+            return self.pooling(embeddings, encoded_input['attention_mask'])
+        
+        elif self.embedding_mode == 'pretrained':
+            return self.doc_embeddings[tensor([int(self.doc_id_to_index[id]) for id in documents])]
     
     def cited_embed(self, cited_docs):
         batch_size = len(cited_docs)
@@ -133,8 +166,12 @@ class GraphBiEncoder(nn.Module):
         batch_size = len(written_docs)
         flatten_docs = sum(written_docs, [])
         wrote_embs = self.doc_encoder(flatten_docs)
+        wrote_hyperplane = self.hyper_plane(tensor(1).to(self.device))
+        wrote_embs = self._translation(wrote_embs, wrote_hyperplane, self.device)
+        if self.normalize:
+            wrote_embs = F.normalize(wrote_embs, dim=-1)
         wrote_embs = wrote_embs.view(batch_size, -1, self.embedding_size)
-        return wrote_embs
+        return wrote_embs, wrote_hyperplane
 
     def venue_embed(self, venue_ids):
         v_ids = tensor([self.venue_to_index[v] for v in venue_ids]).to(self.device)
@@ -143,42 +180,66 @@ class GraphBiEncoder(nn.Module):
     
 
     def user_embeddings(self, user_ids):
-        u_ids = tensor([self.author_to_index[u] for u in user_ids]).to(self.device)
+        u_ids = tensor([self.author_to_index.get(u, len(self.author_to_index)) for u in user_ids]).to(self.device)
         user_embs = self.author_embedding(u_ids)
+        if self.normalize:
+            return F.normalize(user_embs, dim=-1)
+            
         return user_embs
             
     
     def forward(self, batch):
-        query_embedding = self.query_encoder(batch['query'])
+        with no_grad():
+            query_embedding = self.query_encoder(batch['query_id'])
         
-        pos_embedding = self.doc_encoder(batch['pos_doc'])
-        pos_cited_embeddings = self.cited_embed(batch['pos_cited'])
-        pos_venue_embeddings = self.venue_embed(batch['pos_doc_venue'])
+            pos_embedding = self.doc_encoder(batch['pos_doc_id'])
+            # pos_cited_embeddings = self.cited_embed(batch['pos_cited_id'])
         
+        # pos_venue_embeddings = self.venue_embed(batch['pos_doc_venue'])
+        
+        with no_grad():
+            neg_embedding = self.doc_encoder(batch['neg_doc_id'])
+            # neg_cited_embeddings = self.cited_embed(batch['neg_cited_id'])
+        # neg_venue_embeddings = self.venue_embed(batch['neg_doc_venue'])
 
-        neg_embedding = self.doc_encoder(batch['neg_doc'])
-        neg_cited_embeddings = self.cited_embed(batch['neg_cited'])
-        neg_venue_embeddings = self.venue_embed(batch['neg_doc_venue'])
-
-        user_witten_embs = self.wrote_embed(batch['user_docs'])
+        with no_grad():
+            user_witten_embs, wrote_hyperplane = self.wrote_embed(batch['user_docs_id'])
         user_embs = self.user_embeddings(batch['user_id'])
 
-        venue_relation = self.relation_embedding(tensor(2).to(self.device))
+        # venue_relation = self.relation_embedding(tensor(2).to(self.device))
         wrote_relation = self.relation_embedding(tensor(1).to(self.device))
         cited_relation = self.relation_embedding(tensor(0).to(self.device))
+
+        u_wrote_head = self._translation(user_embs, wrote_hyperplane, self.device)
+        if self.normalize:
+            u_wrote_head = F.normalize(u_wrote_head, dim=-1)
+
+        cited_hyperplane = self.hyper_plane(tensor(0).to(self.device))
+
+        u_cited_head = self._translation(user_embs, cited_hyperplane, self.device)
+        pos_embedding_tail = self._translation(pos_embedding, cited_hyperplane, self.device)
+        if self.normalize:
+            pos_embedding_tail = F.normalize(pos_embedding_tail, dim=-1)
+        neg_embedding_tail = self._translation(neg_embedding, cited_hyperplane, self.device)
+        if self.normalize:
+            neg_embedding_tail = F.normalize(neg_embedding_tail, dim=-1)
 
         return {
             'Q_emb': query_embedding,
             'P_emb': pos_embedding,
-            'P_cited': pos_cited_embeddings,
-            'P_venue': pos_venue_embeddings,
+            'P_emb_cited_tail': pos_embedding_tail,
+            # 'P_cited': pos_cited_embeddings,
+            # 'P_venue': pos_venue_embeddings,
             'N_emb': neg_embedding,
-            'N_cited': neg_cited_embeddings,
-            'N_venue': neg_venue_embeddings,
+            'N_emb_cited_tail': neg_embedding_tail,
+            # 'N_cited': neg_cited_embeddings,
+            # 'N_venue': neg_venue_embeddings,
             'U_emb': user_embs,
+            'U_wrote_head': u_wrote_head,
             'U_wrote': user_witten_embs,
+            'U_cited_head': u_cited_head,
             'wrote': wrote_relation.view(1,-1),
-            'venue': venue_relation.view(1,-1),
+            # 'venue': venue_relation.view(1,-1),
             'cited': cited_relation.view(1,-1)
         }
     
@@ -237,3 +298,124 @@ class GraphBiEncoder(nn.Module):
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
         token_embeddings[input_mask_expanded == 0] = -1e9  # Set padding tokens to large negative value
         return t_max(token_embeddings, 1)[0]
+    
+
+
+
+class GraphTransH(nn.Module):
+    def __init__(
+        self,
+        n_authors,
+        n_venues,
+        n_affiliations,
+        doc_embs,
+        venue_pad_id,
+        affiliation_pad_id,
+        n_relations,
+        mode='transe',
+        device='cpu',
+    ):
+        super(GraphTransH, self).__init__()
+        self.n_authors      = n_authors
+        self.n_venues       = n_venues
+        self.n_affiliations = n_affiliations
+        self.device         = device
+        self.mode           = mode
+        
+        self.doc_embedding  = doc_embs
+        self.embedding_size = self.doc_embedding.shape[1]
+        self.author_embedding = nn.Embedding(
+            n_authors,
+            self.embedding_size,
+            device=self.device
+        )
+        self.venue_embedding = nn.Embedding(
+            n_venues,
+            self.embedding_size,
+            padding_idx=venue_pad_id,
+            device=self.device
+        )
+        self.affliation_embedding = nn.Embedding(
+            n_affiliations,
+            self.embedding_size,
+            padding_idx=affiliation_pad_id,
+            device=self.device
+        )
+
+        self.n_relations = n_relations
+        self.relation_embedding = nn.Embedding(
+            self.n_relations,
+            self.embedding_size,
+            device=self.device
+        )
+        self.hyper_plane = nn.Embedding(
+            self.n_relations,
+            self.embedding_size,
+            device=self.device
+        )
+
+        self._init_embeddings()
+
+    def _init_embeddings(self):
+        nn.init.xavier_uniform_(self.author_embedding.weight.data)
+        nn.init.xavier_uniform_(self.venue_embedding.weight.data)
+        nn.init.xavier_uniform_(self.affliation_embedding.weight.data)
+        nn.init.xavier_uniform_(self.relation_embedding.weight.data)
+        nn.init.xavier_uniform_(self.hyper_plane.weight.data)
+        
+    def forward(self, data):
+        user_embs = self.author_embedding(tensor(data['user_id']).to(self.device))
+
+        wrote_embs = self.doc_embedding[tensor(data['wrote']).to(self.device)]
+        cited_embs = self.doc_embedding[tensor(data['cited']).to(self.device)]
+        coauthor_embs = self.author_embedding(tensor(data['coauthor']).to(self.device))
+        venue_embs = self.venue_embedding(tensor(data['venue']).to(self.device))
+        affiliation_embs = self.affliation_embedding(tensor(data['affiliation']).to(self.device))
+        if self.mode == 'transh':
+            wrote_embs = self._translation(wrote_embs, self.hyper_plane(tensor(0).to(self.device)), self.device)
+            cited_embs = self._translation(cited_embs, self.hyper_plane(tensor(1).to(self.device)), self.device)
+            coauthor_embs = self._translation(coauthor_embs, self.hyper_plane(tensor(2).to(self.device)), self.device)
+            venue_embs = self._translation(venue_embs, self.hyper_plane(tensor(3).to(self.device)), self.device)
+            affiliation_embs = self._translation(affiliation_embs, self.hyper_plane(tensor(4).to(self.device)), self.device)
+            
+        
+
+        # 0 wrote (user wrote doc) ok
+        # 1 cited (user cited doc) ok
+        # 2 co_author with (user co_author user) ok
+        # 3 in_venue (user in_venue venue) ok
+        # 4 affiliated_to (user affiliated_to affiliation) ok
+        wrote_rel = self.relation_embedding(tensor(0).to(self.device)).view(1,-1).expand(wrote_embs.size())
+        cited_rel = self.relation_embedding(tensor(1).to(self.device)).view(1,-1).expand(cited_embs.size())
+        co_author_rel = self.relation_embedding(tensor(2).to(self.device)).view(1,-1).expand(coauthor_embs.size())
+        venue_rel = self.relation_embedding(tensor(3).to(self.device)).view(1,-1).expand(venue_embs.size())
+        affiliation_rel = self.relation_embedding(tensor(4).to(self.device)).view(1,-1).expand(affiliation_embs.size())
+
+        return {
+            'user_emb': user_embs,
+            'wrote_emb': wrote_embs,
+            'cited_emb': cited_embs,
+            'coauthor_emb': coauthor_embs,
+            'venue_emb': venue_embs,
+            'affiliation_emb': affiliation_embs,
+            'wrote_rel': wrote_rel,
+            'cited_rel': cited_rel,
+            'co_author_rel': co_author_rel,
+            'venue_rel': venue_rel,
+            'affiliation_rel': affiliation_rel
+        }
+    
+    @staticmethod
+    def _translation(entity, hyper_plane, device):
+        """
+        Projects the entity on the hyper plane indicated by the normal vector:
+        it can be achieved by calculating the projection of the entity (embedding)
+        on the normal vector, and then with a simple vectorial sum we get the projection
+        """
+        # the hyper plane is normalized following the contraint described in the paper.
+        hyper_plane = F.normalize(hyper_plane, p=2, dim=-1).to(device)
+        projection_val = t_sum(entity * hyper_plane, dim=-1, keepdims=True).to(device)
+        return entity - projection_val * hyper_plane
+    
+
+    
