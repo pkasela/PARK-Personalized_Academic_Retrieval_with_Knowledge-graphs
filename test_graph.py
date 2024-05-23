@@ -2,20 +2,20 @@ import os
 import json
 import torch
 
-from dataloader import read_jsonl 
+from torch.nn import functional as F
 from model import GraphTransH
 from tqdm import tqdm
 from indxr import Indxr
 from ranx import Run, Qrels, compare, fuse, optimize_fusion
 
 
-def get_bert_rerank(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
+def get_user_rerank(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
     bert_run = {}
     model.eval()
     for query in tqdm(data, total=len(data)):
         q_user_id = user_id_to_index[query['user_id']]
         with torch.no_grad():
-            q_embedding = model.author_embedding(torch.tensor([q_user_id]).to('cuda'))
+            q_embedding = F.normalize(model.author_embedding(torch.tensor([q_user_id]).to('cuda')), -1)
 
         bm25_docs = query['bm25_doc_ids']
         """
@@ -28,17 +28,76 @@ def get_bert_rerank(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
                 d_embeddings.append(torch.zeros(model.embedding_size).view(1,-1).to('cuda'))
         d_embeddings = torch.vstack(d_embeddings)
         """
-        d_embeddings = model.author_embedding( torch.tensor([user_id_to_index[doc_id_to_user[x][0]] for x in bm25_docs[:top_k]]).to('cuda') )
+        with torch.no_grad():
+            d_embeddings = model.author_embedding( torch.tensor([user_id_to_index[doc_id_to_user[x][0]] for x in bm25_docs[:top_k]]).to('cuda') )
+            d_embeddings = F.normalize(d_embeddings, -1)
         bert_scores = torch.einsum('xy, ly -> x', d_embeddings, q_embedding)
         bert_run[query['id']] = {doc_id: bert_scores[i].item() for i, doc_id in enumerate(bm25_docs[:top_k])}                
 
     return bert_run
 
 
-dataset_folder = 'computer_science'
+def get_bert_rerank_0(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
+    bert_run = {}
+    model.eval()
+    for query in tqdm(data, total=len(data)):
+        q_user_id = query['user_id']
 
+        bm25_docs = query['bm25_doc_ids']
+        """
+        d_embeddings = []
+        for docs in bm25_docs[:top_k]:
+            try:
+                with torch.no_grad():
+                    d_embeddings.append(model.author_embedding(torch.tensor([user_id_to_index[doc_id_to_user[docs][0]]]).to('cuda')))
+            except KeyError:
+                d_embeddings.append(torch.zeros(model.embedding_size).view(1,-1).to('cuda'))
+        d_embeddings = torch.vstack(d_embeddings)
+        """
+        with torch.no_grad():
+            bert_scores = [1 if q_user_id == doc_id_to_user[x][0]  else 0 for x in bm25_docs[:top_k]]
+        bert_run[query['id']] = {doc_id: bert_scores[i] for i, doc_id in enumerate(bm25_docs[:top_k])}                
+
+    return bert_run
+
+
+def get_bert_rerank(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
+    bert_run = {}
+    model.eval()
+    for query in tqdm(data, total=len(data)):
+        q_user_id = user_id_to_index[query['user_id']]
+        with torch.no_grad():
+            q_embedding = model.author_embedding(torch.tensor([q_user_id]).to('cuda'))
+            q_embedding = F.normalize(q_embedding, dim=-1)
+
+        bm25_docs = query['bm25_doc_ids']
+        bert_run[query['id']] = {}
+        d_embeddings = []
+        for i, doc_id in enumerate(bm25_docs[:top_k]):
+            with torch.no_grad():
+                d_embedding = model.author_embedding( torch.tensor([user_id_to_index[u] for u in doc_id_to_user[doc_id]]).to('cuda') )
+            d_embedding = d_embedding.mean(dim=0, keepdim=True)
+            d_embeddings.append(d_embedding)
+            # bert_scores = torch.einsum('xy, ly -> x', d_embeddings, q_embedding)
+            # bert_run[query['id']][doc_id] = bert_scores[0].cpu().detach()
+        
+        d_embeddings = torch.vstack(d_embeddings)
+        d_embeddings = F.normalize(d_embeddings, dim=-1)
+        bert_scores = torch.einsum('xy, ly -> x', d_embeddings, q_embedding)
+        bert_run[query['id']] = {doc_id: bert_scores[i].item() for i, doc_id in enumerate(bm25_docs[:top_k])}                
+        
+    return bert_run
+
+
+
+dataset_folder = 'computer_science'
+dataset_name = 'computer_science'
+device = 'cuda'
 n_relations = 5
-doc_embs = torch.load('./embeddings/all_minilm.pt').to('cuda')
+trans_mode = 'transh'
+runs_path = '../multidomain/runs'
+
+doc_embs = torch.load(f'./embeddings/{dataset_name}/all_minilm.pt').to(device)
 with open(os.path.join(dataset_folder, 'user_id_to_index_to_index.json'), 'r') as f:
     user_id_to_index = json.load(f)
 
@@ -48,7 +107,7 @@ with open(os.path.join(dataset_folder, 'affiliation_id_to_index.json'), 'r') as 
 with open(os.path.join(dataset_folder, 'venue_id_to_index.json'), 'r') as f:
     venue_id_to_index = json.load(f)
 
-with open(os.path.join('embeddings', 'all_minilm.json'), 'r') as f:
+with open(os.path.join('embeddings', dataset_name, 'all_minilm.json'), 'r') as f:
     doc_id_to_index = json.load(f)
 
 model = GraphTransH(
@@ -59,10 +118,10 @@ model = GraphTransH(
     venue_pad_id=venue_id_to_index[''],
     affiliation_pad_id=venue_id_to_index[''],
     n_relations=n_relations,
-    mode='transh',
-    device='cuda',
+    mode=trans_mode,
+    device=device,
 )
-model.load_state_dict(torch.load('models/user.pt'))
+model.load_state_dict(torch.load(f'models/{dataset_name}/{trans_mode}/user.pt'))
 model.eval()
 
 with open(f'{dataset_folder}/author_graph.json', 'r') as f:
@@ -77,14 +136,14 @@ for a in tqdm(final_authors.keys()):
             doc_id_to_user[doc] = [a]
 
 
-
+print(dataset_folder)
 split = 'val'
 query_data = Indxr(os.path.join(dataset_folder, split, 'queries.jsonl'), key_id='id')
 user_run = get_bert_rerank(query_data, model, doc_id_to_user, user_id_to_index)
 
 qrels = Qrels.from_file(os.path.join(dataset_folder, split, 'qrels.json'))
 # bert_ranx_run = Run(bert_run, name='BERT')
-bert_ranx_run = Run.from_file(f'../multidomain/runs/computer_science/{split}/all_minilm.lz4')
+bert_ranx_run = Run.from_file(f'{runs_path}/{dataset_name}/{split}/all_minilm.lz4')
 bert_ranx_run.name = 'BERT'
 user_ranx_run = Run(user_run, name='USER')
 bm25_ranx_run = Run.from_file(os.path.join(dataset_folder, split, 'bm25_run.json'))
@@ -165,7 +224,7 @@ user_run = get_bert_rerank(query_data, model, doc_id_to_user, user_id_to_index)
 
 qrels = Qrels.from_file(os.path.join(dataset_folder, split, 'qrels.json'))
 # bert_ranx_run = Run(bert_run, name='BERT')
-bert_ranx_run = Run.from_file(f'../multidomain/runs/computer_science/{split}/all_minilm.lz4')
+bert_ranx_run = Run.from_file(f'{runs_path}/{dataset_name}/{split}/all_minilm.lz4')
 bert_ranx_run.name = 'BERT'
 user_ranx_run = Run(user_run, name='USER')
 bm25_ranx_run = Run.from_file(os.path.join(dataset_folder, split, 'bm25_run.json'))

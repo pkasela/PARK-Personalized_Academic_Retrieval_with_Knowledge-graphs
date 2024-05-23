@@ -9,11 +9,15 @@ from tqdm import tqdm
 from torch.optim import AdamW
 import json
 
-dataset_folder = 'computer_science'
-split = 'train'
+dataset_folder = 'psychology'
+dataset_name = 'psychology'
 shuffle = True
 batch_size = 16384
 lr = 1e-3
+n_relations = 5
+trans_mode = 'transh'
+device = 'cuda'
+max_epoch = 200
 
 
 with open(os.path.join(dataset_folder, 'user_id_to_index_to_index.json'), 'r') as f:
@@ -25,7 +29,7 @@ with open(os.path.join(dataset_folder, 'affiliation_id_to_index.json'), 'r') as 
 with open(os.path.join(dataset_folder, 'venue_id_to_index.json'), 'r') as f:
     venue_id_to_index = json.load(f)
 
-with open(os.path.join('embeddings', 'all_minilm.json'), 'r') as f:
+with open(os.path.join('embeddings', dataset_name, 'all_minilm.json'), 'r') as f:
     doc_id_to_index = json.load(f)
     
 train_data = DataLoader(
@@ -41,8 +45,7 @@ train_data = DataLoader(
     collate_fn=author_collate_fn
 )
 
-n_relations = 5
-doc_embs = torch.load('./embeddings/all_minilm.pt').to('cuda')
+doc_embs = torch.load(f'./embeddings/{dataset_name}/all_minilm.pt').to(device)
 
 model = GraphTransH(
         n_authors=len(user_id_to_index),
@@ -52,14 +55,17 @@ model = GraphTransH(
         venue_pad_id=venue_id_to_index[''],
         affiliation_pad_id=venue_id_to_index[''],
         n_relations=n_relations,
-        mode='transe',
-        device='cuda',
+        normalize=True,
+        mode=trans_mode,
+        device=device,
     )
 
 loss_fn = TransXLoss(0.5)
 optimizer = AdamW(model.parameters(), lr=lr)
 optimizer.zero_grad()
-for epoch in tqdm(range(100)):
+print(dataset_name)
+os.makedirs(f'models/{dataset_name}/{trans_mode}', exist_ok=True)
+for epoch in tqdm(range(max_epoch)):
     pbar = tqdm(train_data)
     losses = []
     for data in pbar:
@@ -76,4 +82,4 @@ for epoch in tqdm(range(100)):
         summary = "TRAIN EPOCH {:3d} Average Loss {:.2e}".format(epoch,  average_loss)
         pbar.set_description(summary)
 
-torch.save(model.state_dict(), 'models/user.pt')
+    torch.save(model.state_dict(), f'models/{dataset_name}/{trans_mode}//user.pt')

@@ -26,16 +26,13 @@ def write_jsonl(path, data, verbose=True):
             json.dump(d, f)
             f.write('\n')
 
-# remove the authors with less than 20 papers:
-dataset_folder = 'computer_science'
-output_folder = f'cleaned_{dataset_folder}'
-split_year = 2017
+dataset_folder = 'physics'
 
 
 val_queries   = Indxr(os.path.join(dataset_folder, 'val/queries.jsonl'))
 test_queries  = Indxr(os.path.join(dataset_folder, 'test/queries.jsonl'))
 val_rerank_res = set([docs for queries in val_queries for docs in queries['bm25_doc_ids']])
-test_rerank_res = set([docs for queries in test_queries for docs in queries['bm25_doc_ids']])
+test_rerank_res = set([docs for queries in test_queries for docs in queries['bm25_doc_ids'][:100]])
 
 rerank_docs = val_rerank_res.union(test_rerank_res)
 
@@ -121,7 +118,7 @@ for a in tqdm(final_authors):
     #     for cited_doc in out_refs.get(doc)['out_refs']
     # ]
     # )
-    final_json[a['id']]['cited'] = [cited_doc for doc in a['user_docs'] for cited_doc in out_refs.get(doc)['out_refs']]
+    final_json[a['id']]['cited'] = [cited_doc for doc in a['user_docs'] for cited_doc in out_refs.get(doc, {'out_refs': []})['out_refs']]
     #co_author
     # final_triplets.extend([
     #     (a['id'], 2, user)

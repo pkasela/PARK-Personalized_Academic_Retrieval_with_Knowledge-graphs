@@ -312,6 +312,7 @@ class GraphTransH(nn.Module):
         venue_pad_id,
         affiliation_pad_id,
         n_relations,
+        normalize=False,
         mode='transe',
         device='cpu',
     ):
@@ -321,6 +322,7 @@ class GraphTransH(nn.Module):
         self.n_affiliations = n_affiliations
         self.device         = device
         self.mode           = mode
+        self.normalize      = normalize
         
         self.doc_embedding  = doc_embs
         self.embedding_size = self.doc_embedding.shape[1]
@@ -364,6 +366,7 @@ class GraphTransH(nn.Module):
         nn.init.xavier_uniform_(self.hyper_plane.weight.data)
         
     def forward(self, data):
+
         user_embs = self.author_embedding(tensor(data['user_id']).to(self.device))
 
         wrote_embs = self.doc_embedding[tensor(data['wrote']).to(self.device)]
@@ -378,6 +381,11 @@ class GraphTransH(nn.Module):
             venue_embs = self._translation(venue_embs, self.hyper_plane(tensor(3).to(self.device)), self.device)
             affiliation_embs = self._translation(affiliation_embs, self.hyper_plane(tensor(4).to(self.device)), self.device)
             
+        if self.normalize:
+            user_embs = F.normalize(user_embs, dim=-1)
+            coauthor_embs = F.normalize(wrote_embs, dim=-1)
+            venue_embs = F.normalize(venue_embs, dim=-1)
+            affiliation_embs = F.normalize(affiliation_embs, dim=-1)
         
 
         # 0 wrote (user wrote doc) ok

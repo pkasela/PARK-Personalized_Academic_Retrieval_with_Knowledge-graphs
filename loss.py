@@ -191,26 +191,26 @@ class TransXLoss(nn.Module):
         # user wrote doc
         pos_score = norm(output['user_emb'] + output['wrote_rel'] - output['wrote_emb'], p=2, dim=-1)
         neg_score = norm(output['user_emb'] + output['wrote_rel'] - output['wrote_emb'][negative_index], p=2, dim=-1)
-        wrote_score = relu(self.margin - pos_score + neg_score).mean()
+        wrote_score = relu(self.margin + pos_score - neg_score).mean()
 
         # user cited doc
         pos_score = norm(output['user_emb'] + output['cited_rel'] - output['cited_emb'], p=2, dim=-1)
         neg_score = norm(output['user_emb'] + output['cited_rel'] - output['cited_emb'][negative_index], p=2, dim=-1)
-        cited_score = relu(self.margin - pos_score + neg_score).mean()
+        cited_score = relu(self.margin + pos_score - neg_score).mean()
 
         # user coauthor user
         pos_score = norm(output['user_emb'] + output['co_author_rel'] - output['coauthor_emb'], p=2, dim=-1)
         neg_score = norm(output['user_emb'] + output['co_author_rel'] - output['coauthor_emb'][negative_index], p=2, dim=-1)
-        coauthor_score = relu(self.margin - pos_score + neg_score).mean()
+        coauthor_score = relu(self.margin + pos_score - neg_score).mean()
 
         # user venue venue
         pos_score = norm(output['user_emb'] + output['venue_rel'] - output['venue_emb'], p=2, dim=-1)
         neg_score = norm(output['user_emb'] + output['venue_rel'] - output['venue_emb'][negative_index], p=2, dim=-1)
-        venue_score = relu(self.margin - pos_score + neg_score).mean()
+        venue_score = relu(self.margin + pos_score - neg_score).mean()
 
         # user venue venue
         pos_score = norm(output['user_emb'] + output['affiliation_rel'] - output['affiliation_emb'], p=2, dim=-1)
         neg_score = norm(output['user_emb'] + output['affiliation_rel'] - output['affiliation_emb'][negative_index], p=2, dim=-1)
-        affiliation_score = relu(self.margin - pos_score + neg_score).mean()
+        affiliation_score = relu(self.margin + pos_score - neg_score).mean()
 
         return wrote_score + cited_score + coauthor_score + venue_score + affiliation_score
