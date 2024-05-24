@@ -3,6 +3,7 @@ import os
 import subprocess
 from tqdm import tqdm
 from indxr import Indxr
+import random
 
 
 def file_len(fname):
@@ -32,7 +33,7 @@ dataset_folder = 'physics'
 val_queries   = Indxr(os.path.join(dataset_folder, 'val/queries.jsonl'))
 test_queries  = Indxr(os.path.join(dataset_folder, 'test/queries.jsonl'))
 val_rerank_res = set([docs for queries in val_queries for docs in queries['bm25_doc_ids']])
-test_rerank_res = set([docs for queries in test_queries for docs in queries['bm25_doc_ids'][:100]])
+test_rerank_res = set([docs for queries in test_queries for docs in queries['bm25_doc_ids']])
 
 rerank_docs = val_rerank_res.union(test_rerank_res)
 
@@ -111,6 +112,8 @@ for a in tqdm(final_authors):
     # ]
     # )
     final_json[a['id']]['wrote'] = [doc for doc in a['user_docs']]
+    # if len(final_json[a['id']]['wrote']) > 100:
+    #     final_json[a['id']]['wrote'] = random.sample(final_json[a['id']]['wrote'], k=100)
     # cited
     # final_triplets.extend([
     #     (a['id'], 1, cited_doc)
@@ -119,6 +122,8 @@ for a in tqdm(final_authors):
     # ]
     # )
     final_json[a['id']]['cited'] = [cited_doc for doc in a['user_docs'] for cited_doc in out_refs.get(doc, {'out_refs': []})['out_refs']]
+    if (dataset_folder == 'physics') and (len(final_json[a['id']]['cited']) > 10_000):
+        final_json[a['id']]['cited'] = random.sample(final_json[a['id']]['cited'], k=10_000)
     #co_author
     # final_triplets.extend([
     #     (a['id'], 2, user)
@@ -127,6 +132,8 @@ for a in tqdm(final_authors):
     # ]
     # )
     final_json[a['id']]['co_author'] = [user for doc in a['user_docs'] for user in doc_id_to_user.get(doc)]
+    if (dataset_folder == 'physics') and (len(final_json[a['id']]['co_author']) > 10_000):
+        final_json[a['id']]['co_author'] = random.sample(final_json[a['id']]['co_author'], k=10_000)
     #venue
     # final_triplets.extend([
     #     (a['id'], 3, get_venue(doc))
@@ -139,6 +146,7 @@ for a in tqdm(final_authors):
     # if a['affiliation'] != "":
     #     final_triplets.extend([(a['id'], 4, a['affiliation'])])
     final_json[a['id']]['affiliation'] = [a['affiliation']]
+
 
 with open(os.path.join(dataset_folder, 'author_graph.json'), 'w') as f:
     json.dump(final_json, f)

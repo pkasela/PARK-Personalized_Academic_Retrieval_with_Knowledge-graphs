@@ -9,8 +9,8 @@ from tqdm import tqdm
 from torch.optim import AdamW
 import json
 
-dataset_folder = 'psychology'
-dataset_name = 'psychology'
+dataset_folder = 'physics'
+dataset_name = 'physics'
 shuffle = True
 batch_size = 16384
 lr = 1e-3

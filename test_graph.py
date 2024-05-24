@@ -90,8 +90,8 @@ def get_bert_rerank(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
 
 
 
-dataset_folder = 'computer_science'
-dataset_name = 'computer_science'
+dataset_folder = 'physics'
+dataset_name = 'physics'
 device = 'cuda'
 n_relations = 5
 trans_mode = 'transh'

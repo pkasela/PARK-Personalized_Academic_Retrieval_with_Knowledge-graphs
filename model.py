@@ -1,7 +1,7 @@
 from adapters import init
 from torch import save, load, concat
 from torch import clamp as t_clamp
-from torch import nn, no_grad, tensor
+from torch import nn, no_grad, tensor, matmul
 from torch import sum as t_sum
 from torch import max as t_max
 from torch.nn import functional as F
@@ -350,11 +350,18 @@ class GraphTransH(nn.Module):
             self.embedding_size,
             device=self.device
         )
-        self.hyper_plane = nn.Embedding(
-            self.n_relations,
-            self.embedding_size,
-            device=self.device
-        )
+        if self.mode == 'transh':
+            self.hyper_plane = nn.Embedding(
+                self.n_relations,
+                self.embedding_size,
+                device=self.device
+            )
+        if self.mode == 'transr':
+            self.M = nn.Embedding(
+                self.n_relations,
+                self.embedding_size*self.embedding_size,
+                device=self.device
+            )
 
         self._init_embeddings()
 
@@ -363,7 +370,10 @@ class GraphTransH(nn.Module):
         nn.init.xavier_uniform_(self.venue_embedding.weight.data)
         nn.init.xavier_uniform_(self.affliation_embedding.weight.data)
         nn.init.xavier_uniform_(self.relation_embedding.weight.data)
-        nn.init.xavier_uniform_(self.hyper_plane.weight.data)
+        if self.mode == 'transh':
+            nn.init.xavier_uniform_(self.hyper_plane.weight.data)
+        if self.mode == 'transr':
+            nn.init.xavier_uniform_(self.M.weight.data)
         
     def forward(self, data):
 
@@ -380,7 +390,14 @@ class GraphTransH(nn.Module):
             coauthor_embs = self._translation(coauthor_embs, self.hyper_plane(tensor(2).to(self.device)), self.device)
             venue_embs = self._translation(venue_embs, self.hyper_plane(tensor(3).to(self.device)), self.device)
             affiliation_embs = self._translation(affiliation_embs, self.hyper_plane(tensor(4).to(self.device)), self.device)
-            
+
+        if self.mode == 'transr':
+            wrote_embs = self._transform(wrote_embs, self.M(tensor(0).to(self.device)), self.device)
+            cited_embs = self._transform(cited_embs, self.M(tensor(1).to(self.device)), self.device)
+            coauthor_embs = self._transform(coauthor_embs, self.M(tensor(2).to(self.device)), self.device)
+            venue_embs = self._transform(venue_embs, self.M(tensor(3).to(self.device)), self.device)
+            affiliation_embs = self._transform(affiliation_embs, self.M(tensor(4).to(self.device)), self.device)
+
         if self.normalize:
             user_embs = F.normalize(user_embs, dim=-1)
             coauthor_embs = F.normalize(wrote_embs, dim=-1)
@@ -426,4 +443,18 @@ class GraphTransH(nn.Module):
         return entity - projection_val * hyper_plane
     
 
-    
+    @staticmethod
+    def _transform(v, M, device):
+        """
+        Projects the entities v in another space using M for each relation r
+        torch.matmul uses batch matrix product if n_dimension > 2
+        The first dimension indicates the batch while the multiplication
+        is done on the 2 and 3 dimension in this case thus:
+        M x v -> (batch, rel_dim, entity_dim) x (entity_dim, 1) will return
+        (batch, rel_dim, 1) or the entity vector in the relation space
+        """
+        entity_dim = v.shape[1]
+        rel_dim = M.shape[1]//entity_dim
+        v = v.view(-1, entity_dim, 1).to(device)
+        M = M.view(-1, rel_dim, entity_dim).to(device)
+        return matmul(M, v).view(-1, rel_dim).to(device)

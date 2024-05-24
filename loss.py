@@ -207,7 +207,7 @@ class TransXLoss(nn.Module):
         pos_score = norm(output['user_emb'] + output['venue_rel'] - output['venue_emb'], p=2, dim=-1)
         neg_score = norm(output['user_emb'] + output['venue_rel'] - output['venue_emb'][negative_index], p=2, dim=-1)
         venue_score = relu(self.margin + pos_score - neg_score).mean()
-
+        
         # user venue venue
         pos_score = norm(output['user_emb'] + output['affiliation_rel'] - output['affiliation_emb'], p=2, dim=-1)
         neg_score = norm(output['user_emb'] + output['affiliation_rel'] - output['affiliation_emb'][negative_index], p=2, dim=-1)
