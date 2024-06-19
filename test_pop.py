@@ -29,12 +29,12 @@ def get_user_rerank(data, model, top_k=1000):
         
     return user_run, bert_run
 
-dataset_folder = 'psychology'
-dataset_name = 'psychology'
+dataset_folder = 'computer_science'
+dataset_name = 'computer_science'
 device = 'cuda'
 aggregation_mode = 'mean'
 
-print(dataset_name, aggregation_mode)
+print(dataset_name)
 
 doc_embs = os.path.join('embeddings',dataset_name, 'all_minilm.pt')
 doc_id_to_index = os.path.join('embeddings', dataset_name, 'all_minilm.json')
@@ -60,10 +60,12 @@ user_ranx_run = Run(val_user_run, name='USER')
 
 bm25_ranx_run = Run.from_file(os.path.join(dataset_folder, split, 'bm25_run.json'))
 bm25_ranx_run.name = 'BM25'
+pop_ranx_run = Run.from_file(os.path.join(dataset_folder, f'Pop_{split}.json'))
+pop_ranx_run.name = 'POP'
 
-bm25_user_params = optimize_fusion(
+bm25_pop_params = optimize_fusion(
     qrels=val_qrels,
-    runs=[bm25_ranx_run, user_ranx_run],
+    runs=[bm25_ranx_run, pop_ranx_run],
     norm="min-max",
     method="wsum",
     metric="map@100",  # The metric to maximize during optimization
@@ -78,13 +80,13 @@ bm25_bert_params = optimize_fusion(
     return_optimization_report=True
 )
 
-bm25_user_run = fuse(
-        runs=[bm25_ranx_run, user_ranx_run],
+bm25_pop_run = fuse(
+        runs=[bm25_ranx_run, pop_ranx_run],
         norm="min-max",
         method="wsum",
-        params=bm25_user_params[0],
+        params=bm25_pop_params[0],
     )
-bm25_user_run.name = 'BM25 + USER'
+bm25_pop_run.name = 'BM25 + POP'
 
 
 bm25_bert_run = fuse(
@@ -95,30 +97,30 @@ bm25_bert_run = fuse(
     )
 bm25_bert_run.name = 'BM25 + BERT'
 
-user_bert_params = optimize_fusion(
+pop_bert_params = optimize_fusion(
     qrels=val_qrels,
-    runs=[bm25_ranx_run, bert_ranx_run, user_ranx_run],
+    runs=[bm25_ranx_run, bert_ranx_run, pop_ranx_run],
     norm="min-max",
     method="wsum",
     metric="map@100",  # The metric to maximize during optimization
     return_optimization_report=True
 )
 
-user_bert_run = fuse(
-        runs=[bm25_ranx_run, bert_ranx_run, user_ranx_run],
+pop_bert_run = fuse(
+        runs=[bm25_ranx_run, bert_ranx_run, pop_ranx_run],
         norm="min-max",
         method="wsum",
-        params=user_bert_params[0],
+        params=pop_bert_params[0],
     )
-user_bert_run.name = 'BM25 + BERT + USER'
+pop_bert_run.name = 'BM25 + BERT + POP'
 
 models = [
     bm25_ranx_run,
     bert_ranx_run,
-    user_ranx_run,
-    bm25_user_run,
+    pop_ranx_run,
+    bm25_pop_run,
     bm25_bert_run,
-    user_bert_run
+    pop_bert_run
 ]
 report = compare(
     qrels=val_qrels,
@@ -138,14 +140,17 @@ user_ranx_run = Run(test_user_run, name='USER')
 
 bm25_ranx_run = Run.from_file(os.path.join(dataset_folder, split, 'bm25_run.json'))
 bm25_ranx_run.name = 'BM25'
+pop_ranx_run = Run.from_file(os.path.join(dataset_folder, f'Pop_{split}.json'))
+pop_ranx_run.name = 'POP'
 
-bm25_user_run = fuse(
-        runs=[bm25_ranx_run, user_ranx_run],
+
+bm25_pop_run = fuse(
+        runs=[bm25_ranx_run, pop_ranx_run],
         norm="min-max",
         method="wsum",
-        params=bm25_user_params[0],
+        params=bm25_pop_params[0],
     )
-bm25_user_run.name = 'BM25 + USER'
+bm25_pop_run.name = 'BM25 + POP'
 
 bm25_bert_run = fuse(
         runs=[bm25_ranx_run, bert_ranx_run],
@@ -155,21 +160,21 @@ bm25_bert_run = fuse(
     )
 bm25_bert_run.name = 'BM25 + BERT'
 
-user_bert_run = fuse(
-        runs=[bm25_ranx_run, bert_ranx_run, user_ranx_run],
+pop_bert_run = fuse(
+        runs=[bm25_ranx_run, bert_ranx_run, pop_ranx_run],
         norm="min-max",
         method="wsum",
-        params=user_bert_params[0],
+        params=pop_bert_params[0],
     )
-user_bert_run.name = 'BM25 + BERT + USER'
+pop_bert_run.name = 'BM25 + BERT + POP'
 
 models = [
     bm25_ranx_run,
     bert_ranx_run,
-    user_ranx_run,
-    bm25_user_run,
+    pop_ranx_run,
+    bm25_pop_run,
     bm25_bert_run,
-    user_bert_run
+    pop_bert_run
 ]
 report = compare(
     qrels=test_qrels,
