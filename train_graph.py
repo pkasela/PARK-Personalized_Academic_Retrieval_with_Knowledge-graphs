@@ -9,15 +9,15 @@ from tqdm import tqdm
 from torch.optim import AdamW
 import json
 
-dataset_folder = 'physics'
-dataset_name = 'physics'
+dataset_folder = 'computer_science'
+dataset_name = 'computer_science'
 shuffle = True
 batch_size = 16384
 lr = 1e-3
 n_relations = 5
-trans_mode = 'transh'
+trans_mode = 'transr'
 device = 'cuda'
-max_epoch = 200
+max_epoch = 100
 
 
 with open(os.path.join(dataset_folder, 'user_id_to_index_to_index.json'), 'r') as f:

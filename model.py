@@ -1,4 +1,3 @@
-from adapters import init
 from torch import save, load, concat
 from torch import clamp as t_clamp
 from torch import nn, no_grad, tensor, matmul
@@ -454,7 +453,7 @@ class GraphTransH(nn.Module):
         (batch, rel_dim, 1) or the entity vector in the relation space
         """
         entity_dim = v.shape[1]
-        rel_dim = M.shape[1]//entity_dim
+        rel_dim = M.shape[0]//entity_dim
         v = v.view(-1, entity_dim, 1).to(device)
         M = M.view(-1, rel_dim, entity_dim).to(device)
         return matmul(M, v).view(-1, rel_dim).to(device)

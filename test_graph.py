@@ -9,7 +9,7 @@ from indxr import Indxr
 from ranx import Run, Qrels, compare, fuse, optimize_fusion
 
 
-def get_user_rerank(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
+def get_user_rerank_zero_author(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
     bert_run = {}
     model.eval()
     for query in tqdm(data, total=len(data)):
@@ -37,25 +37,12 @@ def get_user_rerank(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
     return bert_run
 
 
-def get_bert_rerank_0(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
+def get_bert_rerank_self_citation(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
     bert_run = {}
-    model.eval()
     for query in tqdm(data, total=len(data)):
         q_user_id = query['user_id']
-
         bm25_docs = query['bm25_doc_ids']
-        """
-        d_embeddings = []
-        for docs in bm25_docs[:top_k]:
-            try:
-                with torch.no_grad():
-                    d_embeddings.append(model.author_embedding(torch.tensor([user_id_to_index[doc_id_to_user[docs][0]]]).to('cuda')))
-            except KeyError:
-                d_embeddings.append(torch.zeros(model.embedding_size).view(1,-1).to('cuda'))
-        d_embeddings = torch.vstack(d_embeddings)
-        """
-        with torch.no_grad():
-            bert_scores = [1 if q_user_id == doc_id_to_user[x][0]  else 0 for x in bm25_docs[:top_k]]
+        bert_scores = [1 if q_user_id == doc_id_to_user[x][0]  else 0 for x in bm25_docs[:top_k]]
         bert_run[query['id']] = {doc_id: bert_scores[i] for i, doc_id in enumerate(bm25_docs[:top_k])}                
 
     return bert_run
@@ -90,11 +77,11 @@ def get_bert_rerank(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
 
 
 
-dataset_folder = 'physics'
-dataset_name = 'physics'
+dataset_folder = 'psychology'
+dataset_name = 'psychology'
 device = 'cuda'
 n_relations = 5
-trans_mode = 'transh'
+trans_mode = 'transr'
 runs_path = '../multidomain/runs'
 
 doc_embs = torch.load(f'./embeddings/{dataset_name}/all_minilm.pt').to(device)
@@ -109,6 +96,7 @@ with open(os.path.join(dataset_folder, 'venue_id_to_index.json'), 'r') as f:
 
 with open(os.path.join('embeddings', dataset_name, 'all_minilm.json'), 'r') as f:
     doc_id_to_index = json.load(f)
+
 
 model = GraphTransH(
     n_authors=len(user_id_to_index),
