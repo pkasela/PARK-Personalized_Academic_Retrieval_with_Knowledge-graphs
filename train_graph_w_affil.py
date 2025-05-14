@@ -2,9 +2,9 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from dataloader import UserAffilAuthorGraphDataLoader, user_affil_author_collate_fn
-from model import UserAffilGraphTransH
-from loss import UserAffilTransXLoss
+from src.dataloader.dataloader import UserAffilAuthorGraphDataLoader, user_affil_author_collate_fn
+from src.model.model import UserAffilGraphTransH
+from src.loss.loss import UserAffilTransXLoss
 from tqdm import tqdm
 from torch.optim import AdamW
 import json

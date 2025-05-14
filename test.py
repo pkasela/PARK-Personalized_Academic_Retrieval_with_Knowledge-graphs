@@ -2,8 +2,8 @@ import os
 import json
 import torch
 
-from dataloader import read_jsonl 
-from model import GraphBiEncoder
+from src.dataloader.dataloader import read_jsonl 
+from src.model.model import GraphBiEncoder
 from tqdm import tqdm
 from indxr import Indxr
 from ranx import Run, Qrels, compare, fuse, optimize_fusion

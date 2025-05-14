@@ -1,11 +1,7 @@
-from torch import save, load, concat
-from torch import clamp as t_clamp
-from torch import nn, no_grad, tensor, matmul
+from torch import nn, tensor, matmul
 from torch import sum as t_sum
-from torch import max as t_max
 from torch.nn import functional as F
-from transformers import AutoModel, AutoTokenizer
-import json
+
 
 from torch import nn, tensor, matmul
 from torch.nn import functional as F
@@ -150,7 +146,6 @@ class UnifiedGraphTransH(nn.Module):
         v = v.view(-1, entity_dim, 1)
         M = M.view(-1, rel_dim, entity_dim)
         return matmul(M, v).view(-1, rel_dim)
-
 
 class GraphTransH(nn.Module):
     def __init__(
@@ -712,7 +707,6 @@ class UserVenueGraphTransH(nn.Module):
         v = v.view(-1, entity_dim, 1).to(device)
         M = M.view(-1, rel_dim, entity_dim).to(device)
         return matmul(M, v).view(-1, rel_dim).to(device)
-
 
 class GraphTransH(nn.Module):
     def __init__(

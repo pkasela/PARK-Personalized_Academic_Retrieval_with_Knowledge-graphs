@@ -2,9 +2,9 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from dataloader import OnlyAuthorGraphDataLoader, only_author_collate_fn
-from model import OnlyUserGraphTransH
-from loss import OnlyUserTransXLoss
+from src.dataloader.dataloader import OnlyAuthorGraphDataLoader, only_author_collate_fn
+from src.model.model import OnlyUserGraphTransH
+from src.loss.loss import OnlyUserTransXLoss
 from tqdm import tqdm
 from torch.optim import AdamW
 import json

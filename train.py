@@ -3,9 +3,9 @@ import numpy as np
 import torch
 
 from torch.utils.data import DataLoader
-from dataloader import read_jsonl, GraphDataLoader, collate_fn
-from model import GraphBiEncoder
-from loss import TripletMarginLoss
+from src.dataloader.dataloader import read_jsonl, GraphDataLoader, collate_fn
+from src.model.model import GraphBiEncoder
+from src.loss.loss import TripletMarginLoss
 from tqdm import tqdm
 from torch.optim import AdamW
 

@@ -3,7 +3,7 @@ import json
 import torch
 
 from torch.nn import functional as F
-from model import OnlyUserGraphTransH
+from src.model.model import OnlyUserGraphTransH
 from tqdm import tqdm
 from indxr import Indxr
 from ranx import Run, Qrels, compare, fuse, optimize_fusion

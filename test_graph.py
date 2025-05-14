@@ -3,11 +3,11 @@ import json
 import torch
 
 from torch.nn import functional as F
-from model import GraphTransH
+from src.model.model import GraphTransH
 from tqdm import tqdm
 from indxr import Indxr
 from ranx import Run, Qrels, compare, fuse, optimize_fusion
-
+import click
 
 def get_user_rerank_zero_author(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
     bert_run = {}
@@ -77,185 +77,187 @@ def get_bert_rerank(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
 
 
 
-dataset_folder = 'political_science'
-dataset_name = 'political_science'
-device = 'cpu'
-n_relations = 5
-trans_mode = 'transh'
-# runs_path = '../../multidomain/runs'
-runs_path = 'runs'
+@click.command()
+@click.option('--dataset_folder', default='political_science', help='Dataset folder')
+@click.option('--dataset_name', default='political_science', help='Dataset name')
+@click.option('--device', default='cpu', help='Device')
+@click.option('--n_relations', default=5, type=int, help='Number of relations')
+@click.option('--trans_mode', default='transh', help='Trans mode')
+@click.option('--runs_path', default='runs', help='Runs path')
+def main(dataset_folder, dataset_name, device, n_relations, trans_mode, runs_path):
+    doc_embs = torch.load(f'./embeddings/{dataset_name}/all_minilm.pt').to(device)
+    with open(os.path.join(dataset_folder, 'user_id_to_index_to_index.json'), 'r') as f:
+        user_id_to_index = json.load(f)
 
-doc_embs = torch.load(f'./embeddings/{dataset_name}/all_minilm.pt').to(device)
-with open(os.path.join(dataset_folder, 'user_id_to_index_to_index.json'), 'r') as f:
-    user_id_to_index = json.load(f)
+    with open(os.path.join(dataset_folder, 'affiliation_id_to_index.json'), 'r') as f:
+        affiliation_id_to_index = json.load(f)
 
-with open(os.path.join(dataset_folder, 'affiliation_id_to_index.json'), 'r') as f:
-    affiliation_id_to_index = json.load(f)
+    with open(os.path.join(dataset_folder, 'venue_id_to_index.json'), 'r') as f:
+        venue_id_to_index = json.load(f)
 
-with open(os.path.join(dataset_folder, 'venue_id_to_index.json'), 'r') as f:
-    venue_id_to_index = json.load(f)
-
-with open(os.path.join('embeddings', dataset_name, 'all_minilm.json'), 'r') as f:
-    doc_id_to_index = json.load(f)
-
-
-model = GraphTransH(
-    n_authors=len(user_id_to_index),
-    n_venues=len(venue_id_to_index),
-    n_affiliations=len(affiliation_id_to_index),
-    doc_embs=doc_embs,
-    venue_pad_id=venue_id_to_index[''],
-    affiliation_pad_id=venue_id_to_index[''],
-    n_relations=n_relations,
-    mode=trans_mode,
-    device=device,
-)
-model.load_state_dict(torch.load(f'models/{dataset_name}/{trans_mode}/user.pt', map_location=device))
-model.eval()
-
-with open(f'{dataset_folder}/author_graph.json', 'r') as f:
-    final_authors = json.load(f)
-
-doc_id_to_user = {}
-for a in tqdm(final_authors.keys()):
-    for doc in final_authors[a]['wrote']:
-        if doc in doc_id_to_user:
-            doc_id_to_user[doc].append(a)
-        else:
-            doc_id_to_user[doc] = [a]
+    with open(os.path.join('embeddings', dataset_name, 'all_minilm.json'), 'r') as f:
+        doc_id_to_index = json.load(f)
 
 
-print(dataset_folder)
-split = 'val'
-query_data = Indxr(os.path.join(dataset_folder, split, 'queries.jsonl'), key_id='id')
-user_run = get_bert_rerank(query_data, model, doc_id_to_user, user_id_to_index)
+    model = GraphTransH(
+        n_authors=len(user_id_to_index),
+        n_venues=len(venue_id_to_index),
+        n_affiliations=len(affiliation_id_to_index),
+        doc_embs=doc_embs,
+        venue_pad_id=venue_id_to_index[''],
+        affiliation_pad_id=venue_id_to_index[''],
+        n_relations=n_relations,
+        mode=trans_mode,
+        device=device,
+    )
+    model.load_state_dict(torch.load(f'models/{dataset_name}/{trans_mode}/user.pt', map_location=device))
+    model.eval()
 
-qrels = Qrels.from_file(os.path.join(dataset_folder, split, 'qrels.json'))
-# bert_ranx_run = Run(bert_run, name='BERT')
-bert_ranx_run = Run.from_file(f'{runs_path}/{dataset_name}/{split}/all_minilm.lz4')
-bert_ranx_run.name = 'BERT'
-user_ranx_run = Run(user_run, name='USER')
-bm25_ranx_run = Run.from_file(os.path.join(dataset_folder, split, 'bm25_run.json'))
-bm25_ranx_run.name = 'BM25'
+    with open(f'{dataset_folder}/author_graph.json', 'r') as f:
+        final_authors = json.load(f)
+
+    doc_id_to_user = {}
+    for a in tqdm(final_authors.keys()):
+        for doc in final_authors[a]['wrote']:
+            if doc in doc_id_to_user:
+                doc_id_to_user[doc].append(a)
+            else:
+                doc_id_to_user[doc] = [a]
 
 
-bm25_user_params = optimize_fusion(
-    qrels=qrels,
-    runs=[bm25_ranx_run, user_ranx_run],
-    norm="min-max",
-    method="wsum",
-    metric="ndcg@100",  # The metric to maximize during optimization
-    return_optimization_report=True
-)
+    print(dataset_folder)
+    split = 'val'
+    query_data = Indxr(os.path.join(dataset_folder, split, 'queries.jsonl'), key_id='id')
+    user_run = get_bert_rerank(query_data, model, doc_id_to_user, user_id_to_index)
 
-bm25_bert_params = optimize_fusion(
-    qrels=qrels,
-    runs=[bm25_ranx_run, bert_ranx_run],
-    norm="min-max",
-    method="wsum",
-    metric="ndcg@100",  # The metric to maximize during optimization
-    return_optimization_report=True
-)
+    qrels = Qrels.from_file(os.path.join(dataset_folder, split, 'qrels.json'))
+    bert_ranx_run = Run.from_file(f'{runs_path}/{dataset_name}/{split}/all_minilm.lz4')
+    bert_ranx_run.name = 'BERT'
+    user_ranx_run = Run(user_run, name='USER')
+    bm25_ranx_run = Run.from_file(os.path.join(dataset_folder, split, 'bm25_run.json'))
+    bm25_ranx_run.name = 'BM25'
 
-bm25_user_run = fuse(
+
+    bm25_user_params = optimize_fusion(
+        qrels=qrels,
         runs=[bm25_ranx_run, user_ranx_run],
         norm="min-max",
         method="wsum",
-        params=bm25_user_params[0],
+        metric="ndcg@100",  # The metric to maximize during optimization
+        return_optimization_report=True
     )
-bm25_user_run.name = 'BM25 + USER'
 
-
-bm25_bert_run = fuse(
+    bm25_bert_params = optimize_fusion(
+        qrels=qrels,
         runs=[bm25_ranx_run, bert_ranx_run],
         norm="min-max",
         method="wsum",
-        params=bm25_bert_params[0],
+        metric="ndcg@100",  # The metric to maximize during optimization
+        return_optimization_report=True
     )
-bm25_bert_run.name = 'BM25 + BERT'
 
-bm25_user_bert_params = optimize_fusion(
-    qrels=qrels,
-    runs=[bm25_ranx_run, bert_ranx_run, user_ranx_run],
-    norm="min-max",
-    method="wsum",
-    metric="ndcg@100",  # The metric to maximize during optimization
-    return_optimization_report=True
-)
+    bm25_user_run = fuse(
+            runs=[bm25_ranx_run, user_ranx_run],
+            norm="min-max",
+            method="wsum",
+            params=bm25_user_params[0],
+        )
+    bm25_user_run.name = 'BM25 + USER'
 
-bm25_bert_user_run = fuse(
+
+    bm25_bert_run = fuse(
+            runs=[bm25_ranx_run, bert_ranx_run],
+            norm="min-max",
+            method="wsum",
+            params=bm25_bert_params[0],
+        )
+    bm25_bert_run.name = 'BM25 + BERT'
+
+    bm25_user_bert_params = optimize_fusion(
+        qrels=qrels,
         runs=[bm25_ranx_run, bert_ranx_run, user_ranx_run],
         norm="min-max",
         method="wsum",
-        params=bm25_user_bert_params[0],
+        metric="ndcg@100",  # The metric to maximize during optimization
+        return_optimization_report=True
     )
-bm25_bert_user_run.name = 'BM25 + BERT + USER'
 
-models = [
-    bm25_ranx_run,
-    bert_ranx_run,
-    user_ranx_run,
-    bm25_user_run,
-    bm25_bert_run,
-    bm25_bert_user_run
-]
-report = compare(
-    qrels=qrels,
-    runs=models,
-    metrics=['map@100', 'mrr@10', 'ndcg@10'],
-    max_p=0.01  # P-value threshold, 3 tests
-)
-print(report)
+    bm25_bert_user_run = fuse(
+            runs=[bm25_ranx_run, bert_ranx_run, user_ranx_run],
+            norm="min-max",
+            method="wsum",
+            params=bm25_user_bert_params[0],
+        )
+    bm25_bert_user_run.name = 'BM25 + BERT + USER'
 
-split = 'test'
-query_data = Indxr(os.path.join(dataset_folder, split, 'queries.jsonl'), key_id='id')
-user_run = get_bert_rerank(query_data, model, doc_id_to_user, user_id_to_index)
-
-qrels = Qrels.from_file(os.path.join(dataset_folder, split, 'qrels.json'))
-# bert_ranx_run = Run(bert_run, name='BERT')
-bert_ranx_run = Run.from_file(f'{runs_path}/{dataset_name}/{split}/all_minilm.lz4')
-bert_ranx_run.name = 'BERT'
-user_ranx_run = Run(user_run, name='USER')
-bm25_ranx_run = Run.from_file(os.path.join(dataset_folder, split, 'bm25_run.json'))
-bm25_ranx_run.name = 'BM25'
-
-
-bm25_user_run = fuse(
-        runs=[bm25_ranx_run, user_ranx_run],
-        norm="min-max",
-        method="wsum",
-        params=bm25_user_params[0],
+    models = [
+        bm25_ranx_run,
+        bert_ranx_run,
+        user_ranx_run,
+        bm25_user_run,
+        bm25_bert_run,
+        bm25_bert_user_run
+    ]
+    report = compare(
+        qrels=qrels,
+        runs=models,
+        metrics=['map@100', 'mrr@10', 'ndcg@10'],
+        max_p=0.01  # P-value threshold, 3 tests
     )
-bm25_user_run.name = 'BM25 + USER'
+    print(report)
 
-bm25_bert_run = fuse(
-        runs=[bm25_ranx_run, bert_ranx_run],
-        norm="min-max",
-        method="wsum",
-        params=bm25_bert_params[0],
+    split = 'test'
+    query_data = Indxr(os.path.join(dataset_folder, split, 'queries.jsonl'), key_id='id')
+    user_run = get_bert_rerank(query_data, model, doc_id_to_user, user_id_to_index)
+
+    qrels = Qrels.from_file(os.path.join(dataset_folder, split, 'qrels.json'))
+    # bert_ranx_run = Run(bert_run, name='BERT')
+    bert_ranx_run = Run.from_file(f'{runs_path}/{dataset_name}/{split}/all_minilm.lz4')
+    bert_ranx_run.name = 'BERT'
+    user_ranx_run = Run(user_run, name='USER')
+    bm25_ranx_run = Run.from_file(os.path.join(dataset_folder, split, 'bm25_run.json'))
+    bm25_ranx_run.name = 'BM25'
+
+
+    bm25_user_run = fuse(
+            runs=[bm25_ranx_run, user_ranx_run],
+            norm="min-max",
+            method="wsum",
+            params=bm25_user_params[0],
+        )
+    bm25_user_run.name = 'BM25 + USER'
+
+    bm25_bert_run = fuse(
+            runs=[bm25_ranx_run, bert_ranx_run],
+            norm="min-max",
+            method="wsum",
+            params=bm25_bert_params[0],
+        )
+    bm25_bert_run.name = 'BM25 + BERT'
+
+    bm25_bert_user_run = fuse(
+            runs=[bm25_ranx_run, bert_ranx_run, user_ranx_run],
+            norm="min-max",
+            method="wsum",
+            params=bm25_user_bert_params[0],
+        )
+    bm25_bert_user_run.name = 'BM25 + BERT + USER'
+
+    models = [
+        bm25_ranx_run,
+        bert_ranx_run,
+        user_ranx_run,
+        bm25_user_run,
+        bm25_bert_run,
+        bm25_bert_user_run
+    ]
+    report = compare(
+        qrels=qrels,
+        runs=models,
+        metrics=['map@100', 'mrr@10', 'ndcg@10'],
+        max_p=0.01  # P-value threshold, 3 tests
     )
-bm25_bert_run.name = 'BM25 + BERT'
+    print(report)
 
-bm25_bert_user_run = fuse(
-        runs=[bm25_ranx_run, bert_ranx_run, user_ranx_run],
-        norm="min-max",
-        method="wsum",
-        params=bm25_user_bert_params[0],
-    )
-bm25_bert_user_run.name = 'BM25 + BERT + USER'
-
-models = [
-    bm25_ranx_run,
-    bert_ranx_run,
-    user_ranx_run,
-    bm25_user_run,
-    bm25_bert_run,
-    bm25_bert_user_run
-]
-report = compare(
-    qrels=qrels,
-    runs=models,
-    metrics=['map@100', 'mrr@10', 'ndcg@10'],
-    max_p=0.01  # P-value threshold, 3 tests
-)
-print(report)
+if __name__ == '__main__':
+    main()
