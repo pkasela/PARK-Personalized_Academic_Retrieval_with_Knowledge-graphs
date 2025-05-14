@@ -1,9 +1,7 @@
-import json
 import torch
-from torch import nn
 import os 
-from src.model.pers_model import PersonalizationModel
-from src.dataloader.dataloader import read_jsonl
+from model.pers_model import PersonalizationModel
+from dataloader.dataloader import read_jsonl
 from tqdm import tqdm
 from ranx import Run, Qrels, compare, fuse, optimize_fusion
 import click

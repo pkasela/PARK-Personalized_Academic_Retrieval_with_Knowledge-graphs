@@ -106,3 +106,28 @@ python test_graph.py \
     --embeddings_folder "${EMBEDDING_DIR}" \
     --model_dir "${MODEL_DIR}" \
     --model_save_name "${MODEL_SAVE_NAME}"
+
+
+# Test with popularity fusion
+python test_pop.py \
+    --dataset_folder "${DATASET_FOLDER}" \
+    --dataset_name "${DATASET_NAME}" \
+    --model_save_name "${MODEL_SAVE_NAME}" \
+    --runs_path "${RUN_DIR}"
+
+AGGREGATION_MODE="mean" # or 'attention'
+# Test with personalization fusion
+python test_pers.py \
+    --dataset_folder "${DATASET_FOLDER}" \
+    --dataset_name "${DATASET_NAME}" \
+    --device "${DEVICE}" \
+    --aggregation_mode "${AGGREGATION_MODE}" \
+    --embeddings_folder "${EMBEDDING_DIR}" \
+    --model_name "${MODEL_SAVE_NAME}"
+
+# Test with PageRank fusion
+python test_pagerank.py \
+    --dataset_folder "${DATASET_FOLDER}" \
+    --dataset_name "${DATASET_NAME}" \
+    --model_save_name "${MODEL_SAVE_NAME}" \
+    --runs_path "${RUN_DIR}"
