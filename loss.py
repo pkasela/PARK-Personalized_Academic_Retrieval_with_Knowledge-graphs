@@ -214,3 +214,105 @@ class TransXLoss(nn.Module):
         affiliation_score = relu(self.margin + pos_score - neg_score).mean()
 
         return wrote_score + cited_score + coauthor_score + venue_score + affiliation_score
+
+
+
+class OnlyUserTransXLoss(nn.Module):
+    """
+    Triplet Margin Loss function.
+    """
+
+    def __init__(self, margin=1.0):
+        super(OnlyUserTransXLoss, self).__init__()
+        self.margin = margin
+
+    def forward(self, output):
+        batch_size = output['user_emb'].size()[0]
+        negative_index = tensor(shuffle_list(list(range(batch_size)))).to(output['user_emb'].device)
+        # user wrote doc
+        pos_score = norm(output['user_emb'] + output['wrote_rel'] - output['wrote_emb'], p=2, dim=-1)
+        neg_score = norm(output['user_emb'] + output['wrote_rel'] - output['wrote_emb'][negative_index], p=2, dim=-1)
+        wrote_score = relu(self.margin + pos_score - neg_score).mean()
+
+        # user cited doc
+        pos_score = norm(output['user_emb'] + output['cited_rel'] - output['cited_emb'], p=2, dim=-1)
+        neg_score = norm(output['user_emb'] + output['cited_rel'] - output['cited_emb'][negative_index], p=2, dim=-1)
+        cited_score = relu(self.margin + pos_score - neg_score).mean()
+
+        # user coauthor user
+        pos_score = norm(output['user_emb'] + output['co_author_rel'] - output['coauthor_emb'], p=2, dim=-1)
+        neg_score = norm(output['user_emb'] + output['co_author_rel'] - output['coauthor_emb'][negative_index], p=2, dim=-1)
+        coauthor_score = relu(self.margin + pos_score - neg_score).mean()
+
+        return wrote_score + cited_score + coauthor_score
+
+class UserAffilTransXLoss(nn.Module):
+    """
+    Triplet Margin Loss function.
+    """
+
+    def __init__(self, margin=1.0):
+        super(UserAffilTransXLoss, self).__init__()
+        self.margin = margin
+
+    def forward(self, output):
+        batch_size = output['user_emb'].size()[0]
+        negative_index = tensor(shuffle_list(list(range(batch_size)))).to(output['user_emb'].device)
+        # user wrote doc
+        pos_score = norm(output['user_emb'] + output['wrote_rel'] - output['wrote_emb'], p=2, dim=-1)
+        neg_score = norm(output['user_emb'] + output['wrote_rel'] - output['wrote_emb'][negative_index], p=2, dim=-1)
+        wrote_score = relu(self.margin + pos_score - neg_score).mean()
+
+        # user cited doc
+        pos_score = norm(output['user_emb'] + output['cited_rel'] - output['cited_emb'], p=2, dim=-1)
+        neg_score = norm(output['user_emb'] + output['cited_rel'] - output['cited_emb'][negative_index], p=2, dim=-1)
+        cited_score = relu(self.margin + pos_score - neg_score).mean()
+
+        # user coauthor user
+        pos_score = norm(output['user_emb'] + output['co_author_rel'] - output['coauthor_emb'], p=2, dim=-1)
+        neg_score = norm(output['user_emb'] + output['co_author_rel'] - output['coauthor_emb'][negative_index], p=2, dim=-1)
+        coauthor_score = relu(self.margin + pos_score - neg_score).mean()
+
+        
+        # user affil affil
+        pos_score = norm(output['user_emb'] + output['affiliation_rel'] - output['affiliation_emb'], p=2, dim=-1)
+        neg_score = norm(output['user_emb'] + output['affiliation_rel'] - output['affiliation_emb'][negative_index], p=2, dim=-1)
+        affiliation_score = relu(self.margin + pos_score - neg_score).mean()
+
+        return wrote_score + cited_score + coauthor_score + affiliation_score
+
+
+class UserVenueTransXLoss(nn.Module):
+    """
+    Triplet Margin Loss function.
+    """
+
+    def __init__(self, margin=1.0):
+        super(UserVenueTransXLoss, self).__init__()
+        self.margin = margin
+
+    def forward(self, output):
+        batch_size = output['user_emb'].size()[0]
+        negative_index = tensor(shuffle_list(list(range(batch_size)))).to(output['user_emb'].device)
+        # user wrote doc
+        pos_score = norm(output['user_emb'] + output['wrote_rel'] - output['wrote_emb'], p=2, dim=-1)
+        neg_score = norm(output['user_emb'] + output['wrote_rel'] - output['wrote_emb'][negative_index], p=2, dim=-1)
+        wrote_score = relu(self.margin + pos_score - neg_score).mean()
+
+        # user cited doc
+        pos_score = norm(output['user_emb'] + output['cited_rel'] - output['cited_emb'], p=2, dim=-1)
+        neg_score = norm(output['user_emb'] + output['cited_rel'] - output['cited_emb'][negative_index], p=2, dim=-1)
+        cited_score = relu(self.margin + pos_score - neg_score).mean()
+
+        # user coauthor user
+        pos_score = norm(output['user_emb'] + output['co_author_rel'] - output['coauthor_emb'], p=2, dim=-1)
+        neg_score = norm(output['user_emb'] + output['co_author_rel'] - output['coauthor_emb'][negative_index], p=2, dim=-1)
+        coauthor_score = relu(self.margin + pos_score - neg_score).mean()
+
+        # user venue venue
+        pos_score = norm(output['user_emb'] + output['venue_rel'] - output['venue_emb'], p=2, dim=-1)
+        neg_score = norm(output['user_emb'] + output['venue_rel'] - output['venue_emb'][negative_index], p=2, dim=-1)
+        venue_score = relu(self.margin + pos_score - neg_score).mean()
+        
+        return wrote_score + cited_score + coauthor_score + venue_score
+

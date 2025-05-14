@@ -3,7 +3,7 @@ import json
 import torch
 
 from torch.nn import functional as F
-from model import GraphTransH
+from model import UserAffilGraphTransH
 from tqdm import tqdm
 from indxr import Indxr
 from ranx import Run, Qrels, compare, fuse, optimize_fusion
@@ -77,10 +77,10 @@ def get_bert_rerank(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
 
 
 
-dataset_folder = 'political_science'
-dataset_name = 'political_science'
+dataset_folder = 'computer_science'
+dataset_name = 'computer_science'
 device = 'cpu'
-n_relations = 5
+n_relations = 4
 trans_mode = 'transh'
 # runs_path = '../../multidomain/runs'
 runs_path = 'runs'
@@ -92,25 +92,20 @@ with open(os.path.join(dataset_folder, 'user_id_to_index_to_index.json'), 'r') a
 with open(os.path.join(dataset_folder, 'affiliation_id_to_index.json'), 'r') as f:
     affiliation_id_to_index = json.load(f)
 
-with open(os.path.join(dataset_folder, 'venue_id_to_index.json'), 'r') as f:
-    venue_id_to_index = json.load(f)
-
 with open(os.path.join('embeddings', dataset_name, 'all_minilm.json'), 'r') as f:
     doc_id_to_index = json.load(f)
 
 
-model = GraphTransH(
+model = UserAffilGraphTransH(
     n_authors=len(user_id_to_index),
-    n_venues=len(venue_id_to_index),
     n_affiliations=len(affiliation_id_to_index),
     doc_embs=doc_embs,
-    venue_pad_id=venue_id_to_index[''],
-    affiliation_pad_id=venue_id_to_index[''],
+    affiliation_pad_id=affiliation_id_to_index[''],
     n_relations=n_relations,
     mode=trans_mode,
     device=device,
 )
-model.load_state_dict(torch.load(f'models/{dataset_name}/{trans_mode}/user.pt', map_location=device))
+model.load_state_dict(torch.load(f'models/{dataset_name}/{trans_mode}/user_affil.pt', map_location=device))
 model.eval()
 
 with open(f'{dataset_folder}/author_graph.json', 'r') as f:
