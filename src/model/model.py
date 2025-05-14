@@ -708,7 +708,7 @@ class UserVenueGraphTransH(nn.Module):
         M = M.view(-1, rel_dim, entity_dim).to(device)
         return matmul(M, v).view(-1, rel_dim).to(device)
 
-class GraphTransH(nn.Module):
+class GraphTransX(nn.Module):
     def __init__(
         self,
         n_authors,
@@ -722,7 +722,7 @@ class GraphTransH(nn.Module):
         mode='transe',
         device='cpu',
     ):
-        super(GraphTransH, self).__init__()
+        super(GraphTransX, self).__init__()
         self.n_authors      = n_authors
         self.n_venues       = n_venues
         self.n_affiliations = n_affiliations

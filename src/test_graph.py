@@ -3,13 +3,13 @@ import json
 import torch
 
 from torch.nn import functional as F
-from src.model.model import GraphTransH
+from model.model import GraphTransX
 from tqdm import tqdm
 from indxr import Indxr
 from ranx import Run, Qrels, compare, fuse, optimize_fusion
 import click
 
-def get_user_rerank_zero_author(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
+def get_user_rerank_zero_author(data, model, doc_id_to_user, user_id_to_index, device, top_k=1000):
     bert_run = {}
     model.eval()
     for query in tqdm(data, total=len(data)):
@@ -37,7 +37,7 @@ def get_user_rerank_zero_author(data, model, doc_id_to_user, user_id_to_index, t
     return bert_run
 
 
-def get_bert_rerank_self_citation(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
+def get_bert_rerank_self_citation(data, model, doc_id_to_user, user_id_to_index, device, top_k=1000):
     bert_run = {}
     for query in tqdm(data, total=len(data)):
         q_user_id = query['user_id']
@@ -48,7 +48,7 @@ def get_bert_rerank_self_citation(data, model, doc_id_to_user, user_id_to_index,
     return bert_run
 
 
-def get_bert_rerank(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
+def get_bert_rerank(data, model, doc_id_to_user, user_id_to_index, device, top_k=1000):
     bert_run = {}
     model.eval()
     for query in tqdm(data, total=len(data)):
@@ -84,8 +84,11 @@ def get_bert_rerank(data, model, doc_id_to_user, user_id_to_index, top_k=1000):
 @click.option('--n_relations', default=5, type=int, help='Number of relations')
 @click.option('--trans_mode', default='transh', help='Trans mode')
 @click.option('--runs_path', default='runs', help='Runs path')
-def main(dataset_folder, dataset_name, device, n_relations, trans_mode, runs_path):
-    doc_embs = torch.load(f'./embeddings/{dataset_name}/all_minilm.pt').to(device)
+@click.option('--embeddings_folder', default='../embeddings', help='Embeddings folder')
+@click.option('--model_dir', default='../models', help='Model name')
+@click.option('--model_save_name', default='all_minilm', help='Model name')
+def main(dataset_folder, dataset_name, device, n_relations, trans_mode, runs_path, embeddings_folder, model_dir, model_save_name):
+    doc_embs = torch.load(os.path.join(embeddings_folder, dataset_name, f'{model_save_name}.pt')).to(device)
     with open(os.path.join(dataset_folder, 'user_id_to_index_to_index.json'), 'r') as f:
         user_id_to_index = json.load(f)
 
@@ -95,11 +98,11 @@ def main(dataset_folder, dataset_name, device, n_relations, trans_mode, runs_pat
     with open(os.path.join(dataset_folder, 'venue_id_to_index.json'), 'r') as f:
         venue_id_to_index = json.load(f)
 
-    with open(os.path.join('embeddings', dataset_name, 'all_minilm.json'), 'r') as f:
+    with open(os.path.join(embeddings_folder, dataset_name, f'{model_save_name}.json'), 'r') as f:
         doc_id_to_index = json.load(f)
 
 
-    model = GraphTransH(
+    model = GraphTransX(
         n_authors=len(user_id_to_index),
         n_venues=len(venue_id_to_index),
         n_affiliations=len(affiliation_id_to_index),
@@ -110,7 +113,7 @@ def main(dataset_folder, dataset_name, device, n_relations, trans_mode, runs_pat
         mode=trans_mode,
         device=device,
     )
-    model.load_state_dict(torch.load(f'models/{dataset_name}/{trans_mode}/user.pt', map_location=device))
+    model.load_state_dict(torch.load(os.path.join(model_dir, dataset_name, trans_mode, 'user.pt'), map_location=device))
     model.eval()
 
     with open(f'{dataset_folder}/author_graph.json', 'r') as f:
@@ -128,10 +131,10 @@ def main(dataset_folder, dataset_name, device, n_relations, trans_mode, runs_pat
     print(dataset_folder)
     split = 'val'
     query_data = Indxr(os.path.join(dataset_folder, split, 'queries.jsonl'), key_id='id')
-    user_run = get_bert_rerank(query_data, model, doc_id_to_user, user_id_to_index)
+    user_run = get_bert_rerank(query_data, model, doc_id_to_user, user_id_to_index, device)
 
     qrels = Qrels.from_file(os.path.join(dataset_folder, split, 'qrels.json'))
-    bert_ranx_run = Run.from_file(f'{runs_path}/{dataset_name}/{split}/all_minilm.lz4')
+    bert_ranx_run = Run.from_file(os.path.join(runs_path, dataset_name, split, f'{model_save_name}.lz4'))
     bert_ranx_run.name = 'BERT'
     user_ranx_run = Run(user_run, name='USER')
     bm25_ranx_run = Run.from_file(os.path.join(dataset_folder, split, 'bm25_run.json'))
@@ -208,11 +211,11 @@ def main(dataset_folder, dataset_name, device, n_relations, trans_mode, runs_pat
 
     split = 'test'
     query_data = Indxr(os.path.join(dataset_folder, split, 'queries.jsonl'), key_id='id')
-    user_run = get_bert_rerank(query_data, model, doc_id_to_user, user_id_to_index)
+    user_run = get_bert_rerank(query_data, model, doc_id_to_user, user_id_to_index, device)
 
     qrels = Qrels.from_file(os.path.join(dataset_folder, split, 'qrels.json'))
     # bert_ranx_run = Run(bert_run, name='BERT')
-    bert_ranx_run = Run.from_file(f'{runs_path}/{dataset_name}/{split}/all_minilm.lz4')
+    bert_ranx_run = Run.from_file(os.path.join(runs_path, dataset_name, split, f'{model_save_name}.lz4'))
     bert_ranx_run.name = 'BERT'
     user_ranx_run = Run(user_run, name='USER')
     bm25_ranx_run = Run.from_file(os.path.join(dataset_folder, split, 'bm25_run.json'))

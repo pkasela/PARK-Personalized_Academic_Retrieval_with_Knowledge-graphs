@@ -32,33 +32,21 @@ def get_user_rerank(data, model, top_k=1000):
 @click.command()
 @click.option('--dataset_folder', default='psychology', help='Dataset folder')
 @click.option('--dataset_name', default='psychology', help='Dataset name')
-@click.option('--device', default='cuda', help='Device')
 @click.option('--aggregation_mode', default='mean', help='Aggregation mode')
 @click.option('--embeddings_folder', default='embeddings', help='Embeddings folder')
-@click.option('--model_name', default='all_minilm', help='Model name')
-def main(dataset_folder, dataset_name, device, aggregation_mode, embeddings_folder, model_name):
+@click.option('--model_save_name', default='all_minilm', help='Model name')
+@click.option('--runs_path', default='runs', help='Runs path')
+def main(dataset_folder, dataset_name, aggregation_mode, model_save_name, runs_path):
     print(dataset_name, aggregation_mode)
 
-    doc_embs = os.path.join(embeddings_folder,dataset_name, f'{model_name}.pt')
-    doc_id_to_index = os.path.join(embeddings_folder, dataset_name, f'{model_name}.json')
-    query_embs = os.path.join(embeddings_folder, dataset_name, f'{model_name}_query.pt')
-    query_id_to_index = os.path.join(embeddings_folder, dataset_name, f'{model_name}_query.json')
-    model = PersonalizationModel(
-        doc_embs, 
-        doc_id_to_index, 
-        query_embs, 
-        query_id_to_index, 
-        aggregation_mode, 
-        device
-    )
-
+    
     split = 'val'
     queries = read_jsonl(os.path.join(dataset_folder, split, 'queries.jsonl'))
 
-    val_user_run, val_bert_run = get_user_rerank(queries, model, top_k=1000)
+    val_bert_run = Run.from_file(os.path.join(runs_path, dataset_name, split ,f'{model_save_name}.lz4'))
+    val_bert_run.name = 'BERT'
     val_qrels = Qrels.from_file(os.path.join(dataset_folder, split, 'qrels.json'))
     bert_ranx_run = Run(val_bert_run, name='BERT')
-    user_ranx_run = Run(val_user_run, name='USER')
 
     bm25_ranx_run = Run.from_file(os.path.join(dataset_folder, split, 'bm25_run.json'))
     bm25_ranx_run.name = 'BM25'
@@ -135,10 +123,10 @@ def main(dataset_folder, dataset_name, device, aggregation_mode, embeddings_fold
     split = 'test'
     test_queries = read_jsonl(os.path.join(dataset_folder, split, 'queries.jsonl'))
 
-    test_user_run, test_bert_run = get_user_rerank(test_queries, model, top_k=1000)
+    test_bert_run = Run.from_file(os.path.join(runs_path, dataset_name, split ,f'{model_save_name}.lz4'))
+    test_bert_run.name = 'BERT'
     test_qrels = Qrels.from_file(os.path.join(dataset_folder, split, 'qrels.json'))
     bert_ranx_run = Run(test_bert_run, name='BERT')
-    user_ranx_run = Run(test_user_run, name='USER')
 
     bm25_ranx_run = Run.from_file(os.path.join(dataset_folder, split, 'bm25_run.json'))
     bm25_ranx_run.name = 'BM25'

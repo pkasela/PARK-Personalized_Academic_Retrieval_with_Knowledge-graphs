@@ -70,4 +70,4 @@ for epoch in tqdm(range(max_epoch)):
         summary = "TRAIN EPOCH {:3d} Average Loss {:.2e}".format(epoch,  average_loss)
         pbar.set_description(summary)
 
-    torch.save(model.state_dict(), f'models/{dataset_name}/{trans_mode}//only_user.pt')
+    torch.save(model.state_dict(), f'models/{dataset_name}/{trans_mode}/only_user.pt')

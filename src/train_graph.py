@@ -2,26 +2,28 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from src.dataloader.dataloader import AuthorGraphDataLoader, author_collate_fn
-from src.model.model import GraphTransH
-from src.loss.loss import TransXLoss
+from dataloader.dataloader import AuthorGraphDataLoader, author_collate_fn
+from model.model import GraphTransX
+from loss.loss import TransXLoss
 from tqdm import tqdm
 from torch.optim import AdamW
 import json
 import click
 
 @click.command()
-@click.option('--dataset_folder', default='computer_science', help='Dataset folder')
+@click.option('--dataset_folder', default='../computer_science', help='Dataset folder')
 @click.option('--dataset_name', default='computer_science', help='Dataset name')
-@click.option('--model_name', default='all_minilm', help='Model name')
-@click.option('--shuffle/--no-shuffle', default=True, help='Shuffle data')
-@click.option('--batch-size', default=16384, type=int, help='Batch size')
+@click.option('--model_save_name', default='all_minilm', help='Model name')
+@click.option('--shuffle/--no_shuffle', default=True, help='Shuffle data')
+@click.option('--batch_size', default=16384, type=int, help='Batch size')
 @click.option('--lr', default=1e-3, type=float, help='Learning rate')
-@click.option('--n-relations', default=5, type=int, help='Number of relations')
-@click.option('--trans-mode', default='transh', help='Trans mode')
+@click.option('--n_relations', default=5, type=int, help='Number of relations')
+@click.option('--trans_mode', default='transh', help='Trans mode')
 @click.option('--device', default='cuda:0', help='Device')
-@click.option('--max-epoch', default=100, type=int, help='Max epochs')
-def main(dataset_folder, dataset_name, model_name, shuffle, batch_size, lr, n_relations, trans_mode, device, max_epoch):
+@click.option('--max_epoch', default=100, type=int, help='Max epochs')
+@click.option('--embeddings_folder', default='../embeddings', help='Embeddings folder')
+@click.option('--model_dir', default='../models', help='Model name')
+def main(dataset_folder, dataset_name, model_save_name, shuffle, batch_size, lr, n_relations, trans_mode, device, max_epoch, embeddings_folder, model_dir):
     with open(os.path.join(dataset_folder, 'user_id_to_index_to_index.json'), 'r') as f:
         user_id_to_index = json.load(f)
 
@@ -31,12 +33,12 @@ def main(dataset_folder, dataset_name, model_name, shuffle, batch_size, lr, n_re
     with open(os.path.join(dataset_folder, 'venue_id_to_index.json'), 'r') as f:
         venue_id_to_index = json.load(f)
 
-    with open(os.path.join('embeddings', dataset_name, f'{model_name}.json'), 'r') as f:
+    with open(os.path.join(embeddings_folder, dataset_name, f'{model_save_name}.json'), 'r') as f:
         doc_id_to_index = json.load(f)
     
     train_data = DataLoader(
         AuthorGraphDataLoader(
-            f'./{dataset_folder}/author_graph.json',
+            f'{dataset_folder}/author_graph.json',
             user_id_to_index,
             affiliation_id_to_index,
             venue_id_to_index,
@@ -47,9 +49,9 @@ def main(dataset_folder, dataset_name, model_name, shuffle, batch_size, lr, n_re
         collate_fn=author_collate_fn
     )
 
-    doc_embs = torch.load(f'./embeddings/{dataset_name}/{model_name}.pt').to(device)
+    doc_embs = torch.load(os.path.join(embeddings_folder, dataset_name, f'{model_save_name}.pt')).to(device)
 
-    model = GraphTransH(
+    model = GraphTransX(
             n_authors=len(user_id_to_index),
             n_venues=len(venue_id_to_index),
             n_affiliations=len(affiliation_id_to_index),
@@ -66,7 +68,7 @@ def main(dataset_folder, dataset_name, model_name, shuffle, batch_size, lr, n_re
     optimizer = AdamW(model.parameters(), lr=lr)
     optimizer.zero_grad()
     print(dataset_name)
-    os.makedirs(f'models/{dataset_name}/{trans_mode}', exist_ok=True)
+    os.makedirs(os.path.join(model_dir, dataset_name, trans_mode), exist_ok=True)
     for epoch in tqdm(range(max_epoch)):
         pbar = tqdm(train_data)
         losses = []
@@ -84,7 +86,7 @@ def main(dataset_folder, dataset_name, model_name, shuffle, batch_size, lr, n_re
             summary = "TRAIN EPOCH {:3d} Average Loss {:.2e}".format(epoch,  average_loss)
             pbar.set_description(summary)
 
-        torch.save(model.state_dict(), f'models/{dataset_name}/{trans_mode}/user.pt')
+        torch.save(model.state_dict(), os.path.join(model_dir, dataset_name, trans_mode, 'user.pt'))
 
 if __name__ == '__main__':
     main()

@@ -37,12 +37,12 @@ def read_jsonl(file_path):
 @click.option('--dataset_name', default='physics', help='Dataset name')
 @click.option('--out_ref_file', default=None, help='Path to out_refs.jsonl')
 @click.option('--collection_file', default=None, help='Path to collection.jsonl')
-@click.option('--model_name', default='all_minilm', help='Model name')
+@click.option('--model_save_name', default='all_minilm', help='Model name')
 @click.option('--device', default='cuda', help='Device')
 @click.option('--aggregation_mode', default='mean', help='Aggregation mode')
 @click.option('--embeddings_folder', default='embeddings', help='Embeddings folder')
 @click.option('--runs_path', default='runs', help='Runs path')
-def main(dataset_folder, dataset_name, out_ref_file, collection_file, model_name, device, aggregation_mode, embeddings_folder, runs_path):
+def main(dataset_folder, dataset_name, out_ref_file, collection_file, model_save_name, runs_path):
     if out_ref_file is None:
         out_ref_file = f'{dataset_folder}/out_refs.jsonl'
     if collection_file is None:
@@ -72,7 +72,7 @@ def main(dataset_folder, dataset_name, out_ref_file, collection_file, model_name
     split = 'val'
     queries = read_jsonl(os.path.join(dataset_folder, split, 'queries.jsonl'))
 
-    val_bert_run = Run.from_file(os.path.join(runs_path, dataset_name, split ,f'{model_name}.lz4'))
+    val_bert_run = Run.from_file(os.path.join(runs_path, dataset_name, split ,f'{model_save_name}.lz4'))
     val_bert_run.name = 'BERT'
     val_qrels = Qrels.from_file(os.path.join(dataset_folder, split, 'qrels.json'))
     bert_ranx_run = Run(val_bert_run, name='BERT')
@@ -153,7 +153,7 @@ def main(dataset_folder, dataset_name, out_ref_file, collection_file, model_name
     split = 'test'
     test_queries = read_jsonl(os.path.join(dataset_folder, split, 'queries.jsonl'))
 
-    test_bert_run = Run.from_file(os.path.join(runs_path, dataset_name, split ,f'{model_name}.lz4'))
+    test_bert_run = Run.from_file(os.path.join(runs_path, dataset_name, split ,f'{model_save_name}.lz4'))
     test_bert_run.name = 'BERT'
     test_qrels = Qrels.from_file(os.path.join(dataset_folder, split, 'qrels.json'))
     bert_ranx_run = Run(test_bert_run, name='BERT')

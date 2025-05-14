@@ -23,31 +23,24 @@ def get_bert_rerank(data, q_embeddings, q_id_to_index, doc_embedding, id_to_inde
 
     return bert_run
 
-
-dataset_folder = 'physics'
-dataset_name = 'physics'
-device = 'cpu'
-model = 'all_minilm'
-run_folder = 'runs'
-
 @click.command()
-@click.option('--dataset-folder', default='physics', help='Dataset folder')
-@click.option('--dataset-name', default='physics', help='Dataset name')
+@click.option('--dataset_folder', default='../physics', help='Dataset folder')
+@click.option('--dataset_name', default='physics', help='Dataset name')
 @click.option('--device', default='cpu', help='Device')
 @click.option('--model_name', default='all_minilm', help='Model name')
-@click.option('--embeddings_folder', default='embeddings', help='Embeddings folder')
-@click.option('--runs_path', default='runs', help='Runs path')
+@click.option('--embeddings_folder', default='../embeddings', help='Embeddings folder')
+@click.option('--runs_path', default='../runs', help='Runs path')
 def main(dataset_folder, dataset_name, device, model_name, embeddings_folder, runs_path):
     os.makedirs(os.path.join(runs_path, dataset_name, 'val'), exist_ok=True)
     os.makedirs(os.path.join(runs_path, dataset_name, 'test'), exist_ok=True)
 
-    doc_embedding = torch.load(os.path.join(embeddings_folder, dataset_folder, f'{model_name}.pt')).to(device)
-    with open(os.path.join(embeddings_folder, dataset_folder, f'{model_name}.json'), 'r') as f:
+    doc_embedding = torch.load(os.path.join(embeddings_folder, dataset_name, f'{model_name}.pt')).to(device)
+    with open(os.path.join(embeddings_folder, dataset_name, f'{model_name}.json'), 'r') as f:
         id_to_index = json.load(f)
 
 
-    q_embeddings = torch.load(os.path.join(embeddings_folder, dataset_folder, f'{model_name}_query.pt')).to(device)
-    with open(os.path.join(embeddings_folder, dataset_folder, f'{model_name}_query.json'), 'r') as f:
+    q_embeddings = torch.load(os.path.join(embeddings_folder, dataset_name, f'{model_name}_query.pt')).to(device)
+    with open(os.path.join(embeddings_folder, dataset_name, f'{model_name}_query.json'), 'r') as f:
         q_id_to_index = json.load(f)
 
     split = 'val'
@@ -64,3 +57,6 @@ def main(dataset_folder, dataset_name, device, model_name, embeddings_folder, ru
 
     ranx_run = Run(bert_run, 'Neural')
     ranx_run.save(os.path.join(runs_path, dataset_name, split ,f'{model_name}.lz4'))
+
+if __name__ == '__main__':
+    main()
